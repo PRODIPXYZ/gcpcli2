@@ -8,9 +8,11 @@ CYAN="\e[36m"
 BOLD='\033[1m'
 RESET="\e[0m"
 
+# ---------- Files ----------
 SSH_INFO_FILE="$HOME/.gcp_vm_info"
+TERM_KEY_PATH="$HOME/.ssh/termius_vm_key"
 
-# ---------- Function: Fresh Install + CLI Setup ----------
+# ---------- Fresh Install ----------
 fresh_install() {
     echo -e "${CYAN}${BOLD}Running Fresh Install + CLI Setup...${RESET}"
     sudo apt update && sudo apt upgrade -y
@@ -32,7 +34,7 @@ fresh_install() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Create VM (pre-filled defaults) ----------
+# ---------- Create VM ----------
 create_vm() {
     echo -e "${YELLOW}${BOLD}Create a new VM:${RESET}"
     read -p "Enter VM Name: " vmname
@@ -42,7 +44,7 @@ create_vm() {
     mtype="n2d-custom-4-25600"
     disksize="60"
 
-    echo -e "${GREEN}${BOLD}Creating VM $vmname in zone $zone with default settings...${RESET}"
+    echo -e "${GREEN}${BOLD}Creating VM $vmname in zone $zone...${RESET}"
     gcloud compute instances create $vmname \
         --zone=$zone \
         --machine-type=$mtype \
@@ -57,7 +59,7 @@ create_vm() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Create New Project ----------
+# ---------- Create Project ----------
 create_project() {
     echo -e "${YELLOW}${BOLD}Create a new GCP Project:${RESET}"
     read -p "Enter Project Name: " projname
@@ -76,7 +78,7 @@ create_project() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Switch Project ----------
+# ---------- Switch Project ----------
 switch_project() {
     echo -e "${YELLOW}${BOLD}Available Projects:${RESET}"
     gcloud projects list --format="table(projectId,name)"
@@ -86,21 +88,21 @@ switch_project() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: List VMs ----------
+# ---------- List VMs ----------
 list_vms() {
     echo -e "${YELLOW}${BOLD}Listing all VMs in current project:${RESET}"
     gcloud compute instances list --format="table(name,zone,machineType,STATUS,INTERNAL_IP,EXTERNAL_IP)"
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Show SSH Metadata ----------
+# ---------- Show SSH Metadata ----------
 show_ssh_metadata() {
     echo -e "${YELLOW}${BOLD}SSH Keys Metadata:${RESET}"
     gcloud compute project-info describe --format="value(commonInstanceMetadata.items)"
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Show Entire SSH Key ----------
+# ---------- Show Entire SSH Key ----------
 show_ssh_key() {
     echo -e "${YELLOW}${BOLD}Enter VM Name to show entire SSH Key:${RESET}"
     read -p "VM Name: " vmname
@@ -114,14 +116,13 @@ show_ssh_key() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Show Billing Accounts ----------
+# ---------- Billing ----------
 show_billing_accounts() {
     echo -e "${YELLOW}${BOLD}Available Billing Accounts:${RESET}"
     gcloud beta billing accounts list
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Link Billing ----------
 link_billing() {
     project_id=$1
     echo -e "${YELLOW}${BOLD}Link a billing account to project $project_id:${RESET}"
@@ -132,7 +133,6 @@ link_billing() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Delete VM ----------
 delete_vm() {
     read -p "Enter VM Name to delete: " vmname
     zone=$(gcloud compute instances list --filter="name=$vmname" --format="value(zone)")
@@ -145,15 +145,23 @@ delete_vm() {
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Check Free Trial Credit ----------
 check_credit() {
     echo -e "${YELLOW}${BOLD}Checking remaining Free Trial credit:${RESET}"
     gcloud alpha billing accounts list --format="table(displayName,name,open,creditAmount,creditBalance)"
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Connect VM ----------
+# ---------- Connect VM using Termius Key ----------
 connect_vm() {
+    # Ensure Termius private key exists
+    if [ ! -f "$TERM_KEY_PATH" ]; then
+        echo -e "${YELLOW}Enter path to Termius private key to use for VM connections:${RESET}"
+        read keypath
+        cp "$keypath" "$TERM_KEY_PATH"
+        chmod 600 "$TERM_KEY_PATH"
+        echo -e "${GREEN}Termius key saved at $TERM_KEY_PATH${RESET}"
+    fi
+
     echo -e "${YELLOW}${BOLD}Available VMs in current project:${RESET}"
     mapfile -t vms < <(gcloud compute instances list --format="value(name)")
     if [ ${#vms[@]} -eq 0 ]; then
@@ -163,8 +171,7 @@ connect_vm() {
     fi
 
     for i in "${!vms[@]}"; do
-        vmname="${vms[$i]}"
-        echo "$((i+1))) $vmname"
+        echo "$((i+1))) ${vms[$i]}"
     done
 
     read -p "Select VM to connect [number]: " vmnum
@@ -180,14 +187,15 @@ connect_vm() {
     ext_ip=$(gcloud compute instances describe $vmname --zone $zone --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
     ssh_user=$(gcloud compute instances describe $vmname --zone $zone --format="get(metadata.ssh-keys)" | awk -F':' '{print $1}')
 
-    echo "$ssh_user@$ext_ip" > "$SSH_INFO_FILE"
+    # Save SSH info
+    echo "$vmname|$ssh_user|$ext_ip|$TERM_KEY_PATH" > "$SSH_INFO_FILE"
 
-    echo -e "${GREEN}Connecting to $vmname...${RESET}"
-    ssh -i ~/.ssh/id_rsa "$ssh_user@$ext_ip"
+    echo -e "${GREEN}Connecting to $vmname using Termius private key...${RESET}"
+    ssh -i "$TERM_KEY_PATH" "$ssh_user@$ext_ip"
     read -p "Press Enter to continue..."
 }
 
-# ---------- Function: Disconnect VM ----------
+# ---------- Disconnect VM ----------
 disconnect_vm() {
     if [ -f "$SSH_INFO_FILE" ]; then
         rm "$SSH_INFO_FILE"
@@ -217,7 +225,7 @@ while true; do
     echo -e "${YELLOW}${BOLD}| [11] 💳 Check Free Trial Credit                    |"
     echo -e "${YELLOW}${BOLD}| [12] 🚪 Exit                                       |"
     echo -e "${YELLOW}${BOLD}| [13] 🔗 Connect VM                                 |"
-    echo -e "${YELLOW}${BOLD}| [14] ❌ Disconnect VM                               |"
+    echo -e "${YELLOW}${BOLD"| [14] ❌ Disconnect VM                               |"
     echo -e "${CYAN}${BOLD}+---------------------------------------------------+"
     echo
     read -p "Choose an option [1-14]: " choice
