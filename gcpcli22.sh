@@ -153,7 +153,6 @@ check_credit() {
 
 # ---------- Connect VM using Termius Key ----------
 connect_vm() {
-    # Ensure Termius private key exists
     if [ ! -f "$TERM_KEY_PATH" ]; then
         echo -e "${YELLOW}Enter path to Termius private key to use for VM connections:${RESET}"
         read keypath
@@ -187,7 +186,6 @@ connect_vm() {
     ext_ip=$(gcloud compute instances describe $vmname --zone $zone --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
     ssh_user=$(gcloud compute instances describe $vmname --zone $zone --format="get(metadata.ssh-keys)" | awk -F':' '{print $1}')
 
-    # Save SSH info
     echo "$vmname|$ssh_user|$ext_ip|$TERM_KEY_PATH" > "$SSH_INFO_FILE"
 
     echo -e "${GREEN}Connecting to $vmname using Termius private key...${RESET}"
@@ -225,7 +223,7 @@ while true; do
     echo -e "${YELLOW}${BOLD}| [11] 💳 Check Free Trial Credit                    |"
     echo -e "${YELLOW}${BOLD}| [12] 🚪 Exit                                       |"
     echo -e "${YELLOW}${BOLD}| [13] 🔗 Connect VM                                 |"
-    echo -e "${YELLOW}${BOLD"| [14] ❌ Disconnect VM                               |"
+    echo -e "${YELLOW}${BOLD}| [14] ❌ Disconnect VM                               |"
     echo -e "${CYAN}${BOLD}+---------------------------------------------------+"
     echo
     read -p "Choose an option [1-14]: " choice
